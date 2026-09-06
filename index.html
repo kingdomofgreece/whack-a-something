@@ -2,62 +2,41 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#151515">
-<title>Custom Whack</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Whack-a-Something</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#101010;color:#f5f5f5;font-family:system-ui,-apple-system,sans-serif}
-button,input{font:inherit}button{border:0;border-radius:12px;padding:13px 16px;cursor:pointer}
-.app{max-width:720px;margin:auto;min-height:100vh;padding:18px}.top{display:flex;align-items:center;gap:10px;margin-bottom:18px}.top h1{font-size:25px;margin:0;flex:1}
-.card{background:#1b1b1b;border:1px solid #303030;border-radius:18px;padding:16px;margin:12px 0}
-.primary{background:#fff;color:#111;font-weight:700}.secondary{background:#292929;color:#fff}.danger{background:#6e2424;color:#fff}
-input{width:100%;background:#111;color:#fff;border:1px solid #444;border-radius:12px;padding:13px;margin:7px 0 12px;outline:none}
-.row{display:flex;gap:9px;flex-wrap:wrap}.row>*{flex:1}.muted{color:#aaa}.pack{display:flex;align-items:center;gap:10px}.pack .grow{flex:1}.item{display:flex;align-items:center;gap:12px}.thumb{width:64px;height:64px;border-radius:10px;object-fit:cover;background:#303030}.empty{text-align:center;padding:30px;color:#aaa}
-.game{text-align:center}.game img{width:min(88vw,500px);height:min(60vh,500px);object-fit:contain;border-radius:18px;background:#181818}.timer{font-size:34px;font-weight:800;margin:12px}.score{font-size:17px;color:#bbb}.answer{font-size:22px;text-align:center}.hidden{display:none}.notice{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#eee;color:#111;padding:11px 16px;border-radius:12px;z-index:5}
-small{color:#999}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#eee}main{max-width:720px;margin:auto;padding:20px}h1{text-align:center}
+button,input{font:inherit;border-radius:10px;border:1px solid #555;padding:10px}button{background:#242424;color:#fff}input{background:#181818;color:#fff;width:100%;margin:5px 0 10px}.card{background:#1b1b1b;border:1px solid #333;border-radius:14px;padding:16px;margin:12px 0}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}.hidden{display:none}.center{text-align:center}.big{font-size:2rem;font-weight:700}#gameImage{display:block;max-width:100%;max-height:48vh;margin:15px auto;border-radius:14px}.timer{font-size:2.2rem;font-weight:800}.small{opacity:.7;font-size:.9rem}
 </style>
 </head>
-<body>
-<div class="app" id="app"></div>
+<body><main>
+<h1>Whack-a-Something</h1>
+<section id="home" class="card"><h2>Your packs</h2><div id="packs"></div>
+<div class="row"><button onclick="show('create')">＋ Create pack</button><button onclick="exportData()">Export backup</button><button onclick="document.getElementById('importFile').click()">Import backup</button></div>
+<input id="importFile" type="file" accept=".json" hidden><p class="small">Packs are saved on this device/browser.</p></section>
+<section id="create" class="card hidden"><h2>Create pack</h2><input id="packName" placeholder="Pack name"><div id="items"></div>
+<div class="row"><button onclick="addItem()">＋ Add item</button><button onclick="savePack()">Save pack</button><button onclick="show('home')">Cancel</button></div></section>
+<section id="game" class="card hidden center"><div class="row"><div>Score: <b id="score">0</b></div><div>Streak: <b id="streak">0</b></div><div class="timer" id="timer">12</div></div>
+<img id="gameImage" alt="Item"><div id="prompt" class="big"></div><input id="answer" autocomplete="off" spellcheck="false" placeholder="Type the full name"><button onclick="quitGame()">Quit</button><p id="feedback"></p></section>
+</main>
 <script>
-const DB='custom-whack-db', STORE='packs'; let db, packs=[], screen='home', currentPack=null, game=null;
-const $=id=>document.getElementById(id);
-function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id'});r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>rej(r.error)})}
-function getAll(){return new Promise((res,rej)=>{let r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-function put(p){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).put(p);r.onsuccess=res;r.onerror=()=>rej(r.error)})}
-function del(id){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=res;r.onerror=()=>rej(r.error)})}
-function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function toast(s){let x=document.createElement('div');x.className='notice';x.textContent=s;document.body.append(x);setTimeout(()=>x.remove(),1400)}
-function header(title,back=true){return `<div class="top">${back?'<button class="secondary" onclick="home()">←</button>':''}<h1>${title}</h1></div>`}
-async function home(){screen='home';packs=await getAll();render()}
-function render(){
- let a=$('app');
- if(screen==='home'){a.innerHTML=header('Custom Whack',false)+`<div class="card"><p class="muted">Create your own image → name typing packs.</p><button class="primary" onclick="newPack()">＋ Create pack</button></div>${packs.length?packs.map(p=>`<div class="card pack"><div class="grow"><b>${esc(p.name)}</b><br><small>${p.items.length} item${p.items.length==1?'':'s'}</small></div><button class="primary" ${p.items.length?'':'disabled'} onclick="play('${p.id}')">Play</button><button class="secondary" onclick="edit('${p.id}')">Edit</button></div>`).join(''):`<div class="empty">No packs yet.<br>Create one to get started.</div>`}<div class="card"><button class="secondary" onclick="settings()">⚙ Backup & settings</button></div>`}
- if(screen==='edit'){let p=currentPack;a.innerHTML=header('Edit pack')+`<div class="card"><label>Pack name</label><input id="packname" value="${esc(p.name)}"><button class="primary" onclick="savePackName()">Save name</button></div><div class="card"><button class="primary" onclick="addItem()">＋ Add item</button></div>${p.items.length?p.items.map((i,n)=>`<div class="card item"><img class="thumb" src="${i.image}" onerror="this.style.visibility='hidden'"><div style="flex:1"><b>${esc(i.name)}</b></div><button class="danger" onclick="removeItem(${n})">Delete</button></div>`).join(''):`<div class="empty">This pack has no items yet.</div>`}<div class="card"><button class="danger" onclick="deletePack()">Delete pack</button></div>`}
- if(screen==='settings'){a.innerHTML=header('Settings')+`<div class="card"><h3>Backups</h3><p class="muted">Export your packs to a file before changing phones or clearing browser data.</p><div class="row"><button class="primary" onclick="exportData()">Export</button><button class="secondary" onclick="importFile.click()">Import</button></div><input id="importFile" class="hidden" type="file" accept=".json,application/json" onchange="importData(this.files[0])"></div><div class="card"><h3>About</h3><p class="muted">Everything is stored locally on this device. No account or server is required.</p></div>`}
- if(screen==='game')renderGame();
-}
-function newPack(){let n=prompt('Pack name:');if(!n?.trim())return;currentPack={id:crypto.randomUUID(),name:n.trim(),items:[]};packs.push(currentPack);put(currentPack).then(()=>{screen='edit';render()})}
-async function edit(id){currentPack=packs.find(p=>p.id===id);screen='edit';render()}
-async function savePackName(){let n=$('packname').value.trim();if(!n)return toast('Enter a name');currentPack.name=n;await put(currentPack);toast('Saved')}
-async function removeItem(n){if(confirm('Delete this item?')){currentPack.items.splice(n,1);await put(currentPack);render()}}
-async function deletePack(){if(confirm('Delete this pack and all its items?')){await del(currentPack.id);home()}}
-function addItem(){
- let box=document.createElement('div');box.innerHTML=`<label>Item name</label><input id="iname" placeholder="Exact name to type"><label>Image</label><input id="ifile" type="file" accept="image/*"><small>Choose an image from your phone.</small>`;
- let dlg=document.createElement('dialog');dlg.style.maxWidth='600px';dlg.style.width='90%';dlg.style.background='#1b1b1b';dlg.style.color='#fff';dlg.style.border='1px solid #444';dlg.style.borderRadius='16px';dlg.append(box);
- let actions=document.createElement('div');actions.className='row';actions.style.marginTop='14px';actions.innerHTML='<button class="secondary" onclick="this.closest(\\'dialog\\').close()">Cancel</button><button class="primary" id="addsave">Save item</button>';dlg.append(actions);document.body.append(dlg);dlg.showModal();
- $('addsave').onclick=async()=>{let n=$('iname').value.trim(),f=$('ifile').files[0];if(!n||!f)return toast('Name and image are required');let image=await resizeImage(f);currentPack.items.push({name:n,image});await put(currentPack);dlg.close();dlg.remove();render()}
-}
-function resizeImage(file){return new Promise(res=>{let rd=new FileReader();rd.onload=()=>{let im=new Image();im.onload=()=>{let max=900,s=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.82))};im.src=rd.result};rd.readAsDataURL(file)})}
-function play(id){currentPack=packs.find(p=>p.id===id);game={items:[...currentPack.items],score:0,streak:0,n:0,deadline:0,answer:''};screen='game';render();nextItem()}
-function renderGame(){let a=$('app');a.innerHTML=`<div class="top"><button class="secondary" onclick="endGame()">←</button><h1>${esc(currentPack.name)}</h1></div><div class="game"><div class="score">Score: <b id="score">0</b> · Streak: <b id="streak">0</b></div><div class="timer" id="timer">12.0</div><img id="gameimg"><input class="answer" id="answer" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type the full name"><p class="muted">Press Enter or submit the full name before time runs out.</p><button class="primary" onclick="check()">Submit</button></div>`}
-function nextItem(){if(!game)return;game.current=game.items[Math.floor(Math.random()*game.items.length)];game.deadline=performance.now()+12000;$('gameimg').src=game.current.image;$('answer').value='';$('answer').focus();updateTimer();if(game.timer)cancelAnimationFrame(game.timer);game.timer=requestAnimationFrame(loop)}
-function loop(t){let left=Math.max(0,game.deadline-t);$('timer').textContent=(left/1000).toFixed(1);if(left<=0){game.streak=0;toast('Time!');nextItem();return}game.timer=requestAnimationFrame(loop)}
-function check(){if(!game)return;let v=$('answer').value;if(v===game.current.name){game.score++;game.streak++;$('score').textContent=game.score;$('streak').textContent=game.streak;nextItem()}else toast('Not quite — keep typing!')}
-function endGame(){if(game?.timer)cancelAnimationFrame(game.timer);let s=game?.score||0;game=null;screen='home';home();setTimeout(()=>toast('Game ended — score: '+s),100)}
-async function exportData(){let data=JSON.stringify({version:1,packs:await getAll()});let b=new Blob([data],{type:'application/json'}),u=URL.createObjectURL(b),x=document.createElement('a');x.href=u;x.download='custom-whack-backup.json';x.click();URL.revokeObjectURL(u)}
-async function importData(file){if(!file)return;try{let d=JSON.parse(await file.text());if(!Array.isArray(d.packs))throw 0;for(let p of d.packs){if(!p.id||!p.name||!Array.isArray(p.items))continue;await put(p)}await home();toast('Imported')}catch(e){toast('Invalid backup')}}
-openDB().then(home);
-</script>
-</body>
-</html>
+const DB='was-v2',STORE='packs';let db,currentPack,gameItems=[],currentIndex=0,score=0,streak=0,time,timerId,editingId=null;
+function show(id){document.querySelectorAll('section').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');if(id==='home')renderPacks()}
+function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open(DB,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});r.onsuccess=e=>{db=e.target.result;res()};r.onerror=()=>rej(r.error)})}
+function allPacks(){return new Promise((res,rej)=>{let r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function putPack(p){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).put(p);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+function delPack(id){return new Promise((res,rej)=>{let r=db.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+function esc(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+async function renderPacks(){let box=document.getElementById('packs'),packs=await allPacks();box.innerHTML=packs.length?'':'<p class="small">No packs yet.</p>';packs.forEach(p=>{let d=document.createElement('div');d.className='card';d.innerHTML='<b>'+esc(p.name)+'</b><div class="small">'+p.items.length+' item(s)</div>';let r=document.createElement('div');r.className='row';let b=document.createElement('button');b.textContent='Play';b.onclick=()=>startGame(p);let e=document.createElement('button');e.textContent='Edit';e.onclick=()=>editPack(p);let x=document.createElement('button');x.textContent='Delete';x.onclick=async()=>{if(confirm('Delete this pack?')){await delPack(p.id);renderPacks()}};r.append(b,e,x);d.append(r);box.append(d)})}
+function addItem(data={name:'',image:''}){let w=document.createElement('div');w.className='card itemEditor';w.innerHTML='<input class="itemName" placeholder="Name to type"><input class="itemFile" type="file" accept="image/*"><div class="preview small"></div><button type="button" class="remove">Remove</button>';w.querySelector('.itemName').value=data.name;w.dataset.image=data.image||'';w.querySelector('.preview').textContent=data.image?'Existing image selected':'';w.querySelector('.remove').onclick=()=>w.remove();w.querySelector('.itemFile').onchange=async e=>{if(e.target.files[0]){w.dataset.image=await resizeImage(e.target.files[0]);w.querySelector('.preview').textContent='Image selected'}};document.getElementById('items').append(w)}
+function resizeImage(file){return new Promise(res=>{let r=new FileReader();r.onload=()=>{let im=new Image();im.onload=()=>{let s=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.82))};im.src=r.result};r.readAsDataURL(file)})}
+function editPack(p){editingId=p.id;document.getElementById('packName').value=p.name;document.getElementById('items').innerHTML='';p.items.forEach(addItem);show('create')}
+async function savePack(){let name=document.getElementById('packName').value.trim(),els=[...document.querySelectorAll('.itemEditor')],items=els.map(e=>({name:e.querySelector('.itemName').value.trim(),image:e.dataset.image||''})).filter(x=>x.name);if(!name||!items.length){alert('Add a pack name and at least one item.');return}await putPack({id:editingId||undefined,name,items});editingId=null;document.getElementById('packName').value='';document.getElementById('items').innerHTML='';show('home')}
+function startGame(p){if(!p.items.length)return;currentPack=p;gameItems=[...p.items].sort(()=>Math.random()-.5);currentIndex=0;score=0;streak=0;document.getElementById('score').textContent=0;document.getElementById('streak').textContent=0;show('game');nextRound()}
+function nextRound(){clearInterval(timerId);if(currentIndex>=gameItems.length){gameItems=[...currentPack.items].sort(()=>Math.random()-.5);currentIndex=0}let it=gameItems[currentIndex++];document.getElementById('gameImage').src=it.image||'';document.getElementById('gameImage').style.display=it.image?'block':'none';document.getElementById('prompt').textContent=it.name;document.getElementById('feedback').textContent='';let a=document.getElementById('answer');a.value='';a.focus();time=12;document.getElementById('timer').textContent=12;timerId=setInterval(()=>{time--;document.getElementById('timer').textContent=time;if(time<=0){clearInterval(timerId);streak=0;document.getElementById('feedback').textContent='Time!';setTimeout(nextRound,500)}},1000)}
+document.getElementById('answer').addEventListener('keydown',e=>{if(e.key!=='Enter')return;let target=document.getElementById('prompt').textContent.trim().toLowerCase(),got=e.target.value.trim().toLowerCase();if(got===target){clearInterval(timerId);score++;streak++;document.getElementById('score').textContent=score;document.getElementById('streak').textContent=streak;document.getElementById('feedback').textContent='✓ Correct!';setTimeout(nextRound,300)}else document.getElementById('feedback').textContent='Try again!'})
+function quitGame(){clearInterval(timerId);show('home')}
+async function exportData(){let data=await allPacks(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));a.download='whack-a-something-backup.json';a.click()}
+document.getElementById('importFile').onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=async()=>{try{for(let p of JSON.parse(r.result))await putPack({name:p.name,items:p.items});alert('Backup imported!');renderPacks()}catch(x){alert('Invalid backup.')}};r.readAsText(f)}
+openDB().then(renderPacks).catch(e=>alert('Storage error: '+e));
+</script></body></html>
